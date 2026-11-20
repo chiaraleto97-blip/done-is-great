@@ -1,7 +1,14 @@
-# Done is great — Il mio Pianificatore
+# Done is great
 
-App per pianificare a breve e a lungo termine: inserimento rapido (anche a voce), priorità e categorie, piano della giornata con timeline e settogramma, frasi motivazionali.
+App personale per pianificare a breve e a lungo termine, una cosa per schermata:
+
+- **Adesso**: orologio della giornata (settogramma con ore e mezz'ore), attività come archi colorati
+- **Cattura**: microfono sempre al centro, dettatura in italiano
+- **Oggi / Idee / Orizzonte** (prossimi giorni, settimana, mese, più avanti, lungo termine)
+- **Assistente Gemini**: riorganizza le attività quando arriva un imprevisto
+- **Google Calendar** (sola lettura) e import da file .ics
 
 Apri l'app: https://chiaraleto97-blip.github.io/done-is-great/
 
-I dati restano nel browser del dispositivo: usa ⚙ › Backup per salvarli o spostarli.
+Privacy: attività, chiave Gemini e collegamento al calendario restano solo nel browser del dispositivo.
+Il codice non contiene chiavi: chi apre l'app usa solo i propri dati e i propri account.
