@@ -228,6 +228,14 @@ a{color:inherit}
 .topts button.main{background:var(--ink);color:#fff;grid-column:span 3}
 .trow{display:flex;gap:8px;margin-top:14px}
 .trow button{flex:1}
+.thinking{position:fixed;inset:0;z-index:72;background:#4b3bff;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:30px;text-align:center;animation:pop .25s}
+.thinking svg{width:84px;height:84px;animation:spin 2.4s ease-in-out infinite}
+@keyframes spin{50%{transform:rotate(180deg) scale(1.15)}100%{transform:rotate(360deg)}}
+.thinking b{font-family:Unbounded,sans-serif;font-size:22px;letter-spacing:-.02em;max-width:300px}
+.splan{display:flex;flex-direction:column;gap:0;margin-top:8px}
+.splan div{display:flex;gap:12px;padding:10px 0;border-top:1px solid #f1efff;font-weight:700}
+.splan div:first-child{border-top:0}
+.splan span{font-family:Unbounded,sans-serif;font-size:13px;min-width:48px;padding-top:2px}
 .hidden{display:none!important}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 </style>
@@ -636,6 +644,7 @@ function vAdesso(){
       el('div',{class:'center'}, el('div',{class:'n'}, fmtH(free)), el('div',{class:'l'},'libere'))),
     el('div',{class:'btnrow'},
       el('button',{class:'pill solid',onclick:()=>go('oggi')}, svg(I.list), open ? `${open} da fare` : 'Elenco'),
+      gKey() ? el('button',{class:'pill','aria-label':'Scaletta con Gemini: detta le cose da fare',onclick:()=>{ S.cap.plan = true; openCapture(); }}, svg(I.spark)) : null,
       el('button',{class:'pill','aria-label':'Timer',onclick:()=>getTimer() ? openTimer() : openQuickTimer()}, svg(I.timer)),
       el('button',{class:'pill','aria-label':'Dettaglio del tempo in ore e percentuali',onclick:()=>openDetail(tasks)}, svg(I.pie))),
     timerPill(),
@@ -721,7 +730,7 @@ function vBucket(k){
 /* ---------- cattura ---------- */
 let capOrbOn = false;
 function vCattura(){
-  const ta = el('textarea',{class:'captxt',placeholder:'Parla o scrivi…','aria-label':'Nuova idea o attività',rows:'3'});
+  const ta = el('textarea',{class:'captxt',placeholder: S.cap.plan ? 'Elenca le cose da fare…' : 'Parla o scrivi…','aria-label':'Nuova idea o attività',rows:'3'});
   ta.value = S.cap.text;
   ta.addEventListener('input', () => { S.cap.text = ta.value; });
   const orb = el('button',{class:'orb'+(capOrbOn?' on':''),'aria-label':capOrbOn?'Ferma dettatura':'Detta',onclick:()=>{ startVoice(txt => { S.cap.text = txt; ta.value = txt; }, on => { capOrbOn = on; orb.classList.toggle('on', on); orb.replaceChildren(on ? bars() : svg(I.mic)); }); }},
@@ -731,14 +740,17 @@ function vCattura(){
     el('div',{class:'chips',style:'justify-content:center;flex-wrap:wrap'}, PRIOS.map(([k,l]) => el('button',{class:'chip'+(S.cap.prio===k?' sel':''),onclick:()=>{S.cap.prio=S.cap.prio===k?'':k;render();}}, el('span',{class:'d',style:`background:var(--${k})`}), l))),
     el('div',{class:'chips',style:'justify-content:center;flex-wrap:wrap'}, settings().categories.map(c => el('button',{class:'chip'+(S.cap.cat===c.id?' sel':''),onclick:()=>{S.cap.cat=S.cap.cat===c.id?'':c.id;render();}}, el('span',{class:'d',style:`background:${c.color}`}), c.name))));
   return [
-    el('div',{class:'top'}, el('button',{class:'rb','aria-label':'Chiudi',onclick:()=>{ stopVoice(); go(lastView||'adesso'); }}, svg(I.close,null,{'stroke-width':'2.4'})),
-      el('div',{style:'font-weight:800;letter-spacing:.14em;font-size:13px'}, capOrbOn ? 'TI ASCOLTO' : 'NUOVA'), el('div',{style:'width:46px'})),
+    el('div',{class:'top'}, el('button',{class:'rb','aria-label':'Chiudi',onclick:()=>{ stopVoice(); S.cap.plan=false; go(lastView||'adesso'); }}, svg(I.close,null,{'stroke-width':'2.4'})),
+      el('div',{style:'font-weight:800;letter-spacing:.14em;font-size:13px'}, capOrbOn ? 'TI ASCOLTO' : S.cap.plan ? 'SCALETTA' : 'NUOVA'), el('div',{style:'width:46px'})),
     orb, ta,
     el('div',{style:'margin-top:auto;padding-top:20px'},
-      el('div',{class:'grid3'}, WH.map(([k,l]) => el('button',{class:'opt'+(S.cap.when===k?' sel':''),onclick:()=>{S.cap.when=k;render();}}, l))),
-      el('button',{class:'more',onclick:()=>{S.cap.more=!S.cap.more;render();}}, S.cap.more ? 'Meno opzioni' : 'Priorità e categoria' + ((S.cap.prio||S.cap.cat)?' ●':'')),
-      more,
-      el('button',{class:'big',style:'margin-top:14px',onclick:saveCapture}, svg(I.check,null,{'stroke-width':'2.8'}), 'Salva'))
+      S.cap.plan ? null : el('div',{class:'grid3'}, WH.map(([k,l]) => el('button',{class:'opt'+(S.cap.when===k?' sel':''),onclick:()=>{S.cap.when=k;render();}}, l))),
+      S.cap.plan ? el('p',{style:'text-align:center;font-weight:700;margin:0 0 4px'}, 'Gemini mette tutto nell\'orologio. Quello che non entra va nelle idee.') : el('button',{class:'more',onclick:()=>{S.cap.more=!S.cap.more;render();}}, S.cap.more ? 'Meno opzioni' : 'Priorità e categoria' + ((S.cap.prio||S.cap.cat)?' ●':'')),
+      S.cap.plan ? null : more,
+      gKey() ? el('div',{style:'display:flex;gap:10px;margin-top:14px'},
+        el('button',{class:'big',style:S.cap.plan?'flex:0 0 34%':'',onclick:saveCapture}, svg(I.check,null,{'stroke-width':'2.8'}), 'Salva'),
+        el('button',{class:'big dark',style:S.cap.plan?'':'flex:0 0 52%',onclick:()=>planDay(S.cap.text),'aria-label':'Organizza con Gemini nella giornata'}, svg(I.spark), S.day===todayStr() ? 'Organizza oggi' : 'Organizza ' + relDate(S.day).toLowerCase()))
+      : el('button',{class:'big',style:'margin-top:14px',onclick:saveCapture}, svg(I.check,null,{'stroke-width':'2.8'}), 'Salva'))
   ];
 }
 function bars(){ return el('div',{class:'bars'}, el('i'),el('i'),el('i'),el('i'),el('i')); }
@@ -748,7 +760,7 @@ function saveCapture(){
   if (!title){ toast('Scrivi o detta qualcosa'); return; }
   const t = applyWhen({id:uid(), title, notes:'', priority:S.cap.prio, category:S.cap.cat, duration:0, time:'', done:false, createdAt:Date.now()}, S.cap.when);
   const when = S.cap.when;
-  S.cap = {text:'', when:'inbox', prio:'', cat:'', more:false};
+  S.cap = {text:'', when:'inbox', prio:'', cat:'', more:false, plan:false};
   saveTask(t, true);
   go(when==='inbox' ? 'idee' : (when==='today'||when==='tomorrow') ? (S.day=t.date,'oggi') : (lastView||'adesso'));
   toast(when==='inbox' ? 'Salvata nelle idee' : 'Salvata', 'Dettagli', () => openEditor(S.tasks.get(t.id)||t));
@@ -955,7 +967,7 @@ function vAssistente(){
   const chat = el('div',{class:'chat'});
   if (!S.chat.length){
     chat.append(el('div',{class:'msg ai'},'Dimmi cosa è cambiato e ti propongo come riorganizzare.'));
-    chat.append(el('div',{class:'sugg'}, ['Ho un imprevisto oggi pomeriggio','Riorganizza la mia giornata','Cosa faccio adesso?','Pianifica le mie idee nella settimana'].map(s =>
+    chat.append(el('div',{class:'sugg'}, ['Organizza la mia giornata con le cose da fare','Ho un imprevisto oggi pomeriggio','Cosa faccio adesso?','Pianifica le mie idee nella settimana'].map(s =>
       el('button',{onclick:()=>askGemini(s)}, s))));
   }
   S.chat.forEach((m,i) => {
@@ -1018,28 +1030,75 @@ Regole:
 - Se mancano informazioni importanti, fai una sola domanda nel messaggio e non proporre modifiche.
 Rispondi SOLO con un oggetto JSON valido, senza testo fuori dal JSON, con questa forma:
 {"messaggio": "testo", "modifiche": [{"azione": "sposta|modifica|aggiungi|elimina|completa", "id": "id esistente oppure vuoto se aggiungi", "titolo": "titolo", "data": "AAAA-MM-GG o vuoto", "ora": "HH:MM o vuoto", "durata_min": 0, "orizzonte": "date|inbox|week|month|long", "priorita": "alta|media|bassa o vuoto", "categoria": "id categoria o vuoto", "motivo": "breve spiegazione"}]}`;
-async function askGemini(text){
-  const key = gKey(); if (!key){ render(); return; }
-  S.chat.push({role:'user', text}); S.busy = true; render();
+const autoApply = () => lsGet('pf_gauto', '1') === '1';
+function geminiErr(e){ return e.status===400||e.status===403 ? 'La chiave non funziona: controllala nelle impostazioni.' : e.status===429 ? 'Hai raggiunto il limite di richieste di Gemini per ora. Riprova più tardi.' : 'Non riesco a contattare Gemini ('+e.message+').'; }
+async function callGemini(text, extra){
+  const key = gKey();
   const history = S.chat.slice(-12).map(m => ({ role: m.role==='user' ? 'user' : 'model', parts:[{ text: m.role==='user' ? m.text : JSON.stringify({messaggio:m.text, modifiche:m.raw||[]}) }] }));
   while (history.length && history[0].role!=='user') history.shift();
   history[history.length-1].parts[0].text = 'STATO ATTUALE (JSON):\n' + JSON.stringify(geminiContext()) + '\n\nRICHIESTA:\n' + text;
   let model = lsGet(LS_GMODEL, '') || 'gemini-2.5-flash';
-  const body = { systemInstruction:{parts:[{text:SYS}]}, contents:history, generationConfig:{ responseMimeType:'application/json', temperature:0.4 } };
-  try {
-    let j;
-    try { j = await geminiFetch(`models/${model}:generateContent`, key, body); }
-    catch(e){ if (e.status===404){ model = await pickModel(key); lsSet(LS_GMODEL, model); j = await geminiFetch(`models/${model}:generateContent`, key, body); } else throw e; }
-    const parts = (((j.candidates||[])[0]||{}).content||{}).parts||[];
-    let raw = parts.filter(p => !p.thought).map(p => p.text||'').join('').trim().replace(/^```(?:json)?\s*/,'').replace(/```$/,'');
-    let parsed; try { parsed = JSON.parse(raw); } catch(e){ const m = raw.match(/\{[\s\S]*\}/); parsed = m ? JSON.parse(m[0]) : {messaggio: raw || 'Non ho capito, puoi ripetere?', modifiche: []}; }
-    const changes = (Array.isArray(parsed.modifiche) ? parsed.modifiche : []).filter(validChange);
-    S.chat.push({role:'model', text: String(parsed.messaggio||'Ecco una proposta.'), changes: changes.map(c => ({...c, on:true})), raw: parsed.modifiche||[]});
-  } catch(e){
-    const msg = e.status===400||e.status===403 ? 'La chiave non funziona: controllala nelle impostazioni.' : e.status===429 ? 'Hai raggiunto il limite di richieste di Gemini per ora. Riprova più tardi.' : 'Non riesco a contattare Gemini ('+e.message+').';
-    S.chat.push({role:'model', text: msg, changes: []});
-  }
+  const body = { systemInstruction:{parts:[{text: SYS + (extra ? '\n\n' + extra : '')}]}, contents:history, generationConfig:{ responseMimeType:'application/json', temperature:0.4 } };
+  let j;
+  try { j = await geminiFetch(`models/${model}:generateContent`, key, body); }
+  catch(e){ if (e.status===404){ model = await pickModel(key); lsSet(LS_GMODEL, model); j = await geminiFetch(`models/${model}:generateContent`, key, body); } else throw e; }
+  const parts = (((j.candidates||[])[0]||{}).content||{}).parts||[];
+  let raw = parts.filter(p => !p.thought).map(p => p.text||'').join('').trim().replace(/^```(?:json)?\s*/,'').replace(/```$/,'');
+  let parsed; try { parsed = JSON.parse(raw); } catch(e){ const m = raw.match(/\{[\s\S]*\}/); try { parsed = m ? JSON.parse(m[0]) : null; } catch(e2){ parsed = null; } if (!parsed) parsed = {messaggio: raw || 'Non ho capito, puoi ripetere?', modifiche: []}; }
+  const changes = (Array.isArray(parsed.modifiche) ? parsed.modifiche : []).filter(validChange).map(c => ({...c, on:true}));
+  return { role:'model', text: String(parsed.messaggio||'Ecco una proposta.'), changes, raw: parsed.modifiche||[] };
+}
+async function askGemini(text){
+  if (!gKey()){ render(); return; }
+  S.chat.push({role:'user', text}); S.busy = true; render();
+  try { const m = await callGemini(text); S.chat.push(m); if (autoApply() && m.changes.length) applyChanges(m, true); }
+  catch(e){ S.chat.push({role:'model', text: geminiErr(e), changes: []}); }
   S.busy = false; render();
+}
+function planExtra(day){
+  const isToday = day===todayStr(), from = isToday ? fromMin(Math.min(1425, Math.ceil((nowMin()+5)/15)*15)) : pad(settings().dayStart)+':00';
+  return `MODALITÀ SCALETTA. La persona ha dettato un elenco di cose da fare per il giorno ${day} (${longDate(day)}). Il tuo compito è trasformarlo direttamente nella scaletta di quel giorno:
+- Separa l'elenco in attività distinte con titoli brevi e chiari (iniziale maiuscola, senza "devo").
+- Per ognuna stima una durata realistica in minuti (multipli di 15) e, se evidenti, priorità e categoria (usa gli id delle categorie).
+- Inseriscile con azione "aggiungi", data "${day}" e un orario "ora": parti dalle ${from} e resta entro le ${pad(settings().dayEnd)}:00, intorno agli impegni già presenti quel giorno (soprattutto quelli fissi), senza sovrapposizioni e con brevi pause.
+- Rispetta gli orari detti esplicitamente (es. "alle 15") e metti prima le cose urgenti o importanti; raggruppa le commissioni simili.
+- Se qualcosa non entra nella giornata, aggiungilo comunque con data vuota e orizzonte "inbox" (andrà nelle idee) e dillo nel messaggio.
+- Sposta attività già esistenti (non fisse) solo se serve davvero, spiegando il motivo.
+- Nel messaggio riassumi la scaletta in una o due frasi incoraggianti.`;
+}
+async function planDay(text){
+  text = (text||'').trim();
+  if (!text){ toast('Detta o scrivi l\'elenco delle cose da fare'); return; }
+  if (!gKey()){ toast('Collega prima Gemini'); go('assistente'); return; }
+  stopVoice();
+  const day = S.day;
+  const ov = el('div',{class:'thinking',role:'status'}, svg(I.spark,null,{'stroke-width':'1.6'}), el('b',{},'Gemini sta preparando la tua scaletta…'));
+  document.body.append(ov);
+  S.chat.push({role:'user', text: 'Scaletta per ' + relDate(day).toLowerCase() + ': ' + text});
+  try {
+    const m = await callGemini(text, planExtra(day));
+    S.chat.push(m); ov.remove();
+    S.cap = {text:'', when:'inbox', prio:'', cat:'', more:false, plan:false};
+    if (!m.changes.length){ go('assistente'); return; }
+    applyChanges(m, true);
+    S.day = day; go('adesso');
+    showPlanSummary(m);
+  } catch(e){
+    ov.remove(); S.chat.pop();
+    saveTask({id:uid(), title:text, notes:'', priority:'', category:'', date:'', time:'', duration:0, horizon:'inbox', done:false, createdAt:Date.now()}, true);
+    S.cap = {text:'', when:'inbox', prio:'', cat:'', more:false, plan:false};
+    go('idee'); toast(geminiErr(e) + ' Il testo è nelle idee.');
+  }
+}
+function summaryList(m){
+  return el('div',{class:'splan'}, (m.summary||[]).map(x => el('div',{}, el('span',{}, x.time || '—'), el('p',{style:'margin:0'}, x.text))));
+}
+function showPlanSummary(m){
+  let close;
+  close = openSheet('La tua scaletta', el('div',{}, el('p',{style:'font-weight:600;margin:0 0 6px'}, m.text), summaryList(m)), [
+    el('button',{class:'sbtn light',onclick:()=>{ undoChanges(m); close(); }},'Annulla'),
+    el('button',{class:'sbtn light',onclick:()=>{ close(); go('assistente'); }},'Correggi'),
+    el('button',{class:'sbtn grow',onclick:()=>close()},'Perfetto')]);
 }
 function validChange(c){
   if (!c || typeof c!=='object') return false;
@@ -1061,7 +1120,7 @@ function describeChange(c){
 }
 function proposal(m, idx){
   const box = el('div',{class:'prop'});
-  if (m.applied){ box.append(el('div',{style:'font-weight:800'}, '✓ Modifiche applicate'), m.undo ? el('div',{class:'acts'}, el('button',{style:'background:#f1efff',onclick:()=>{ undoChanges(m); }},'Annulla modifiche')) : null); return box; }
+  if (m.applied){ box.append(el('div',{style:'font-weight:800'}, '✓ Fatto'), summaryList(m), m.undo ? el('div',{class:'acts'}, el('button',{style:'background:#f1efff',onclick:()=>{ undoChanges(m); }},'Annulla')) : null); return box; }
   m.changes.forEach(c => box.append(el('label',{class:'ch'}, el('input',{type:'checkbox',checked:c.on,onchange:e=>{c.on=e.target.checked;}}),
     el('div',{}, el('div',{style:'font-weight:800'}, describeChange(c)), c.motivo ? el('small',{}, c.motivo) : null))));
   box.append(el('div',{class:'acts'},
@@ -1069,8 +1128,18 @@ function proposal(m, idx){
     el('button',{style:'background:#1a1033;color:#fff',onclick:()=>applyChanges(m)},'Applica')));
   return box;
 }
-function applyChanges(m){
+function summaryText(c){
+  const t = S.tasks.get(c.id), name = t ? t.title : String(c.titolo||'');
+  if (c.azione==='elimina') return 'Eliminata: ' + name;
+  if (c.azione==='completa') return 'Fatta: ' + name;
+  const dur = +c.durata_min || (t && +t.duration) || 0;
+  if (c.data) return name + (dur ? ' · ' + fmtH(dur) : '') + (c.data!==S.day ? ' · ' + relDate(c.data) : '');
+  return name + ' → ' + ({inbox:'idee',week:'settimana',month:'mese',long:'lungo termine'}[c.orizzonte] || 'idee');
+}
+function applyChanges(m, quiet){
   const undo = []; let n = 0;
+  m.summary = m.changes.filter(c => c.on).map(c => ({ text: summaryText(c), time: c.azione==='elimina' ? '' : (c.ora || (S.tasks.get(c.id)||{}).time || '') }))
+    .sort((a,b) => (a.time||'99').localeCompare(b.time||'99'));
   for (const c of m.changes.filter(c => c.on)){
     const t = S.tasks.get(c.id);
     undo.push(t ? {...t} : {id:null, created:null});
@@ -1088,7 +1157,7 @@ function applyChanges(m){
     if (!t) undo[undo.length-1] = {id:null, created:base.id};
     saveTask(base, true); n++;
   }
-  m.applied = true; m.undo = undo; render(); toast(`${n} ${n===1?'modifica applicata':'modifiche applicate'}`);
+  m.applied = true; m.undo = undo; render(); if (!quiet) toast(`${n} ${n===1?'modifica applicata':'modifiche applicate'}`);
 }
 function undoChanges(m){
   for (const u of m.undo){ if (u.id) saveTask(u, true); else if (u.created) deleteTask(u.created, true); }
@@ -1253,6 +1322,7 @@ function gemSettings(){
   return el('div',{},
     el('p',{class:'ok'}, 'Collegato · chiave …' + k.slice(-4)),
     el('div',{class:'field'}, el('label',{},'Modello'), el('div',{class:'help'}, lsGet(LS_GMODEL,'') || 'automatico')),
+    el('label',{class:'ch',style:'display:flex;gap:10px;align-items:center;font-weight:700;margin:12px 0'}, el('input',{type:'checkbox',checked:autoApply(),style:'width:22px;height:22px;accent-color:#1a1033',onchange:e=>{ lsSet('pf_gauto', e.target.checked?'1':'0'); }}), 'Applica subito le modifiche dell\'assistente (puoi sempre annullare)'),
     el('p',{class:'help'},'Consiglio: in Google AI Studio imposta un limite di spesa o usa il piano gratuito, così non hai sorprese.'),
     el('div',{class:'btnrow',style:'justify-content:flex-start'},
       el('button',{class:'sbtn light',onclick:async()=>{ try { const m = await pickModel(k); lsSet(LS_GMODEL,m); toast('Modello: '+m); render(); } catch(e){ toast('Errore: '+e.message); } }},'Aggiorna modello'),
@@ -1335,7 +1405,7 @@ function renderBar(){
   bar.replaceChildren(
     el('button',{class:isDay?'act':'','aria-label':'Oggi',onclick:()=>go(S.view==='adesso'?'oggi':'adesso')}, svg(I.clock)),
     el('button',{class:S.view==='idee'?'act':'','aria-label':'Idee',onclick:()=>go('idee')}, svg(I.bulb), ideeN ? el('span',{class:'badge'}, String(ideeN)) : null),
-    el('button',{class:'fab','aria-label':'Detta o scrivi una nuova idea',onclick:openCapture}, svg(I.mic,null,{'stroke-width':'2.2'})),
+    el('button',{class:'fab','aria-label':'Detta o scrivi una nuova idea',onclick:()=>{ S.cap.plan = false; openCapture(); }}, svg(I.mic,null,{'stroke-width':'2.2'})),
     el('button',{class:isOr?'act':'','aria-label':'Orizzonte',onclick:()=>go('orizzonte')}, svg(I.mount)),
     el('button',{class:S.view==='assistente'?'act':'','aria-label':'Assistente Gemini',onclick:()=>go('assistente')}, svg(I.spark)));
 }
