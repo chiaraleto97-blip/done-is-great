@@ -4,6 +4,7 @@ App personale per pianificare a breve e a lungo termine, una cosa per schermata:
 
 - **Adesso**: orologio della giornata (settogramma con ore e mezz'ore), attività come archi colorati
 - **Cattura**: microfono sempre al centro, dettatura in italiano
+- **Timer**: tocca un'attività sull'orologio (o il centro) per avviarlo
 - **Oggi / Idee / Orizzonte** (prossimi giorni, settimana, mese, più avanti, lungo termine)
 - **Assistente Gemini**: riorganizza le attività quando arriva un imprevisto
 - **Google Calendar** (sola lettura) e import da file .ics
