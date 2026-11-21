@@ -997,18 +997,58 @@ function keyField(after){
     status);
 }
 async function geminiFetch(path, key, body){
-  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/' + path, {
-    method: body ? 'POST' : 'GET', headers: Object.assign({'x-goog-api-key': key}, body ? {'Content-Type':'application/json'} : {}),
-    body: body ? JSON.stringify(body) : undefined });
+  const ctrl = ('AbortController' in window) ? new AbortController() : null;
+  const tmo = ctrl ? setTimeout(() => ctrl.abort(), 60000) : null;
+  let res;
+  try {
+    res = await fetch('https://generativelanguage.googleapis.com/v1beta/' + path, {
+      method: body ? 'POST' : 'GET', headers: Object.assign({'x-goog-api-key': key}, body ? {'Content-Type':'application/json'} : {}),
+      body: body ? JSON.stringify(body) : undefined, signal: ctrl ? ctrl.signal : undefined });
+  } catch(e){ const err = new Error(e && e.name==='AbortError' ? 'troppo lento' : 'rete'); err.status = 0; throw err; }
+  finally { if (tmo) clearTimeout(tmo); }
   if (!res.ok){ let msg = 'errore '+res.status; try { const j = await res.json(); if (j.error && j.error.message) msg = j.error.message.slice(0,140); } catch(e){} const err = new Error(msg); err.status = res.status; throw err; }
   return res.json();
 }
-async function pickModel(key){
+/* elenco dei modelli: il preferito + riserve, per quando Google è sovraccarico */
+const LS_GMODELS = 'pf_gemini_models';
+async function listModels(key, force){
+  if (!force){ try { const c = JSON.parse(lsGet(LS_GMODELS,'null')); if (c && c.key===key.slice(-6) && Date.now()-c.at < 3*864e5 && c.list.length) return c.list; } catch(e){} }
   const j = await geminiFetch('models?pageSize=200', key);
   const ms = (j.models||[]).filter(m => (m.supportedGenerationMethods||[]).includes('generateContent')).map(m => m.name.replace('models/',''));
-  const ver = n => { const m = n.match(/^gemini-(\d+(?:\.\d+)?)-flash$/); return m ? parseFloat(m[1]) : -1; };
+  const ver = (n, lite) => { const m = n.match(lite ? /^gemini-(\d+(?:\.\d+)?)-flash-lite$/ : /^gemini-(\d+(?:\.\d+)?)-flash$/); return m ? parseFloat(m[1]) : -1; };
   const flash = ms.filter(n => ver(n) > 0).sort((a,b) => ver(b)-ver(a));
-  return flash[0] || ms.find(n => /flash/.test(n) && !/image|tts|audio|live|lite/.test(n)) || ms.find(n => /^gemini/.test(n)) || 'gemini-2.5-flash';
+  const lite = ms.filter(n => ver(n, true) > 0).sort((a,b) => ver(b,true)-ver(a,true));
+  const alias = ms.filter(n => /^gemini-flash(-lite)?-latest$/.test(n));
+  let list = [...flash.slice(0,3), ...alias, ...lite.slice(0,2)];
+  if (!list.length) list = ms.filter(n => /^gemini/.test(n) && /flash/.test(n) && !/image|tts|audio|live|embedding/.test(n)).slice(0,4);
+  if (!list.length) list = ['gemini-2.5-flash'];
+  lsSet(LS_GMODELS, JSON.stringify({key:key.slice(-6), at:Date.now(), list}));
+  return list;
+}
+async function pickModel(key){ return (await listModels(key, true))[0]; }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function generateWithFallback(key, body, onRetry){
+  const preferred = lsGet(LS_GMODEL, '');
+  let list = []; try { list = await listModels(key); } catch(e){ if (e.status===400||e.status===403) throw e; }
+  const cands = [...new Set([preferred, ...list].filter(Boolean))].slice(0, 5);
+  if (!cands.length) cands.push('gemini-2.5-flash');
+  let lastErr = null, retried = false;
+  for (const model of cands){
+    for (let attempt = 0; attempt < 2; attempt++){
+      try {
+        const j = await geminiFetch(`models/${model}:generateContent`, key, body);
+        S.lastModel = model; return j;
+      } catch(e){
+        lastErr = e;
+        if (e.status===400 && /api key|API_KEY/i.test(e.message)) throw e;
+        if (e.status===403) throw e;
+        if ([500,502,503,504,0].includes(e.status)){ if (!retried){ retried = true; onRetry && onRetry(model); } if (attempt===0){ await sleep(1500); continue; } break; }
+        if (e.status===429 || e.status===404 || e.status===400){ onRetry && onRetry(model); break; }
+        throw e;
+      }
+    }
+  }
+  throw lastErr || new Error('nessun modello disponibile');
 }
 function geminiContext(){
   const today = todayStr(), lim = addDays(today, 14);
@@ -1031,17 +1071,20 @@ Regole:
 Rispondi SOLO con un oggetto JSON valido, senza testo fuori dal JSON, con questa forma:
 {"messaggio": "testo", "modifiche": [{"azione": "sposta|modifica|aggiungi|elimina|completa", "id": "id esistente oppure vuoto se aggiungi", "titolo": "titolo", "data": "AAAA-MM-GG o vuoto", "ora": "HH:MM o vuoto", "durata_min": 0, "orizzonte": "date|inbox|week|month|long", "priorita": "alta|media|bassa o vuoto", "categoria": "id categoria o vuoto", "motivo": "breve spiegazione"}]}`;
 const autoApply = () => lsGet('pf_gauto', '1') === '1';
-function geminiErr(e){ return e.status===400||e.status===403 ? 'La chiave non funziona: controllala nelle impostazioni.' : e.status===429 ? 'Hai raggiunto il limite di richieste di Gemini per ora. Riprova più tardi.' : 'Non riesco a contattare Gemini ('+e.message+').'; }
-async function callGemini(text, extra){
+function geminiErr(e){
+  if (e.status===403 || (e.status===400 && /api key|API_KEY/i.test(e.message))) return 'La chiave non funziona: controllala nelle impostazioni.';
+  if (e.status===429) return 'Hai esaurito per ora le richieste gratuite di Gemini (anche sui modelli di riserva). Riprova più tardi.';
+  if ([500,502,503,504].includes(e.status)) return 'Gemini è molto richiesto in questo momento: ho riprovato anche con i modelli di riserva, senza risposta. Riprova tra qualche minuto.';
+  if (e.status===0) return 'Non riesco a raggiungere Gemini: controlla la connessione e riprova.';
+  return 'Non riesco a contattare Gemini ('+e.message+').';
+}
+async function callGemini(text, extra, onRetry){
   const key = gKey();
   const history = S.chat.slice(-12).map(m => ({ role: m.role==='user' ? 'user' : 'model', parts:[{ text: m.role==='user' ? m.text : JSON.stringify({messaggio:m.text, modifiche:m.raw||[]}) }] }));
   while (history.length && history[0].role!=='user') history.shift();
   history[history.length-1].parts[0].text = 'STATO ATTUALE (JSON):\n' + JSON.stringify(geminiContext()) + '\n\nRICHIESTA:\n' + text;
-  let model = lsGet(LS_GMODEL, '') || 'gemini-2.5-flash';
   const body = { systemInstruction:{parts:[{text: SYS + (extra ? '\n\n' + extra : '')}]}, contents:history, generationConfig:{ responseMimeType:'application/json', temperature:0.4 } };
-  let j;
-  try { j = await geminiFetch(`models/${model}:generateContent`, key, body); }
-  catch(e){ if (e.status===404){ model = await pickModel(key); lsSet(LS_GMODEL, model); j = await geminiFetch(`models/${model}:generateContent`, key, body); } else throw e; }
+  const j = await generateWithFallback(key, body, onRetry);
   const parts = (((j.candidates||[])[0]||{}).content||{}).parts||[];
   let raw = parts.filter(p => !p.thought).map(p => p.text||'').join('').trim().replace(/^```(?:json)?\s*/,'').replace(/```$/,'');
   let parsed; try { parsed = JSON.parse(raw); } catch(e){ const m = raw.match(/\{[\s\S]*\}/); try { parsed = m ? JSON.parse(m[0]) : null; } catch(e2){ parsed = null; } if (!parsed) parsed = {messaggio: raw || 'Non ho capito, puoi ripetere?', modifiche: []}; }
@@ -1051,7 +1094,7 @@ async function callGemini(text, extra){
 async function askGemini(text){
   if (!gKey()){ render(); return; }
   S.chat.push({role:'user', text}); S.busy = true; render();
-  try { const m = await callGemini(text); S.chat.push(m); if (autoApply() && m.changes.length) applyChanges(m, true); }
+  try { const m = await callGemini(text, '', () => { const ty = document.querySelector('.typing'); if (ty && !ty.nextSibling) ty.after(el('div',{class:'help',style:'align-self:flex-start'},'Gemini è molto richiesto, provo un altro modello…')); }); S.chat.push(m); if (autoApply() && m.changes.length) applyChanges(m, true); }
   catch(e){ S.chat.push({role:'model', text: geminiErr(e), changes: []}); }
   S.busy = false; render();
 }
@@ -1072,11 +1115,12 @@ async function planDay(text){
   if (!gKey()){ toast('Collega prima Gemini'); go('assistente'); return; }
   stopVoice();
   const day = S.day;
-  const ov = el('div',{class:'thinking',role:'status'}, svg(I.spark,null,{'stroke-width':'1.6'}), el('b',{},'Gemini sta preparando la tua scaletta…'));
+  const note = el('div',{style:'font-weight:700;opacity:.85;min-height:22px'});
+  const ov = el('div',{class:'thinking',role:'status'}, svg(I.spark,null,{'stroke-width':'1.6'}), el('b',{},'Gemini sta preparando la tua scaletta…'), note);
   document.body.append(ov);
   S.chat.push({role:'user', text: 'Scaletta per ' + relDate(day).toLowerCase() + ': ' + text});
   try {
-    const m = await callGemini(text, planExtra(day));
+    const m = await callGemini(text, planExtra(day), () => { note.textContent = 'Molto richiesto in questo momento: riprovo con un altro modello…'; });
     S.chat.push(m); ov.remove();
     S.cap = {text:'', when:'inbox', prio:'', cat:'', more:false, plan:false};
     if (!m.changes.length){ go('assistente'); return; }
@@ -1321,11 +1365,11 @@ function gemSettings(){
   const k = gKey();
   return el('div',{},
     el('p',{class:'ok'}, 'Collegato · chiave …' + k.slice(-4)),
-    el('div',{class:'field'}, el('label',{},'Modello'), el('div',{class:'help'}, lsGet(LS_GMODEL,'') || 'automatico')),
+    el('div',{class:'field'}, el('label',{},'Modello'), el('div',{class:'help'}, (lsGet(LS_GMODEL,'') || 'automatico') + (S.lastModel && S.lastModel!==lsGet(LS_GMODEL,'') ? ' · ultima risposta da ' + S.lastModel + ' (riserva)' : ''))),
     el('label',{class:'ch',style:'display:flex;gap:10px;align-items:center;font-weight:700;margin:12px 0'}, el('input',{type:'checkbox',checked:autoApply(),style:'width:22px;height:22px;accent-color:#1a1033',onchange:e=>{ lsSet('pf_gauto', e.target.checked?'1':'0'); }}), 'Applica subito le modifiche dell\'assistente (puoi sempre annullare)'),
     el('p',{class:'help'},'Consiglio: in Google AI Studio imposta un limite di spesa o usa il piano gratuito, così non hai sorprese.'),
     el('div',{class:'btnrow',style:'justify-content:flex-start'},
-      el('button',{class:'sbtn light',onclick:async()=>{ try { const m = await pickModel(k); lsSet(LS_GMODEL,m); toast('Modello: '+m); render(); } catch(e){ toast('Errore: '+e.message); } }},'Aggiorna modello'),
+      el('button',{class:'sbtn light',onclick:async()=>{ try { const m = await pickModel(k); lsSet(LS_GMODEL,m); toast('Modello: '+m); render(); } catch(e){ toast(geminiErr(e)); } }},'Aggiorna modello'),
       el('button',{class:'sbtn danger',onclick:()=>{ lsSet(LS_GKEY,null); lsSet(LS_GMODEL,null); S.chat=[]; render(); toast('Chiave rimossa da questo dispositivo'); }},'Rimuovi chiave')));
 }
 function gcalSettings(){
